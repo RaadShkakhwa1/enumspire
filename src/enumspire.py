@@ -124,7 +124,7 @@ def main():
         print(f"[*] Initiating Phase 2: Nmap deep-scan on ports: {open_ports}...")
         
         # Build the dynamic Nmap command list
-        nmap_command = ["nmap", "-p", open_ports, "-sV", "-sC"]
+        nmap_command = ["nmap","-Pn", "-p", open_ports, "-sV", "-sC"]
         
         if args.stealth:
             print("[+] Stealth mode enabled (-T2)")

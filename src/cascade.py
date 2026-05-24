@@ -37,7 +37,7 @@ def generate_cascade_commands(target_ip, services_dict, workspace_dir, wordlist=
             else:
                 # The Professional Fallback: Deep Nmap scan for unknown services
                 f.write(f"# —— Target: Port {port} ({service_name.upper()}) ——\n")
-                f.write(f"nmap -sV -sC -A -p {port} {target_ip}\n\n")
+                f.write(f"nmap -Pn -sV -sC -A -p {port} {target_ip}\n\n")
                 
     # Automatically make the generated bash script executable
     os.chmod(script_path, 0o755)
