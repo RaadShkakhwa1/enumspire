@@ -120,25 +120,87 @@ def main():
         open_ports = execute_rustscan(target_ip)
 
     # 5. WIRING: The Nmap Modifiers & Execution
-    if open_ports:
-        print(f"[*] Initiating Phase 2: Nmap deep-scan on ports: {open_ports}...")
+        if open_ports:
+            if args.verbose:
+                print(f"[*] Initiating Phase 2: Nmap deep-scan on ports: {open_ports}...")
+            
+            # Build the base Nmap command list
+            nmap_command = ["nmap", "-p", open_ports, "-sV", "-sC"]
+            
+            # The User Choice Logic: Inject -Pn only if the user typed it
+            if args.no_ping:
+                nmap_command.insert(1, "-Pn")
+                
+            # Handle the -s (Stealth) timing flag
+            if args.stealth:
+                nmap_command.insert(1, "-T2")
+            else:
+                nmap_command.insert(1, "-T4")
+                
+            nmap_command.append(args.target)
+            
+            # Save the output as XML for parsing
+            nmap_xml_path = os.path.join(workspace_dir, "nmap_scan.xml")
+            nmap_command.extend(["-oX", nmap_xml_path])
+            
+            if args.verbose:
+                print(f"[*] Executing Nmap Command: {' '.join(nmap_command)}")
+                
+            try:
+                subprocess.run(nmap_command, check=True)
+            except subprocess.CalledProcessError:
+                print("[!] Error: Nmap scan failed or was interrupted.")
+                sys.exit(1)
+            
+            # Parse the XML to find specific services
+            services_dict = {}
+            if os.path.exists(nmap_xml_path):
+                try:
+                    tree = ET.parse(nmap_xml_path)
+                    root = tree.getroot()
+                    
+                    for port in root.findall('.//port'):
+                        portid = port.get('portid')
+                        state = port.find('state')
+                        if state is not None and state.get('state') == 'open':
+                            service = port.find('service')
+                            if service is not None and service.get('name'):
+                                services_dict[portid] = service.get('name')
+                except ET.ParseError:
+                    pass # Empty or broken XML handles gracefully
+                    
+            if not services_dict:
+                print("[-] Nmap did not return any identifiable services to enumerate.")
+                sys.exit(0)
+                
+            # Trigger the Cascade Builder with all user arguments
+            generate_cascade_commands(
+                target_ip=args.target, 
+                services_dict=services_dict, 
+                workspace_dir=workspace_dir, 
+                wordlist=args.wordlist, 
+                threads=args.threads,
+                no_ping=args.no_ping
+            )
         
         # Build the dynamic Nmap command list
-        nmap_command = ["nmap","-Pn", "-p", open_ports, "-sV", "-sC"]
+        nmap_command = ["nmap", "-p", open_ports, "-sV", "-sC"]
         
         if args.stealth:
             print("[+] Stealth mode enabled (-T2)")
-            nmap_command.append("-T2")
+            nmap_command.insert(1, "-T2")
         else:
-            nmap_command.append("-T4")
-            
+            nmap_command.insert(1, "-T4")
+
         if args.noping:
             print("[+] No-Ping mode enabled (-Pn)")
-            nmap_command.append("-Pn")
-            
+            nmap_command.insert(1, "-Pn")
+
         if args.exclude:
             print(f"[+] Excluding IPs: {args.exclude}")
-            nmap_command.extend(["--exclude", args.exclude])
+            # Insert exclude flags 
+            nmap_command.insert(1, args.exclude)
+            nmap_command.insert(1, "--exclude")
             
         nmap_command.append(target_ip)
         
