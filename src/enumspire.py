@@ -84,8 +84,13 @@ def main():
         print(f"[*] Module flag detected. Skipping network scanning.")
         print(f"[*] Generating execution templates for: {args.module.upper()}")
         
-        # Passes a fake port {0: module_name} straight to the generator
-        generate_cascade_commands(target_ip, {0: args.module}, workspace_dir, args.wordlist, args.threads)
+        # BUG FIX: Use user-provided ports, or default to port 80 to prevent URL crashes
+        if args.ports:
+            services_dict = {port: args.module for port in args.ports.split(',')}
+        else:
+            services_dict = {80: args.module}
+            
+        generate_cascade_commands(target_ip, services_dict, workspace_dir, args.wordlist, args.threads)
         
         print("[*] Single module execution complete. Check your run_enum.sh file.")
         sys.exit(0)
