@@ -1,0 +1,8 @@
+# Ignore Enumspire workspaces and auto-generated scripts
+Enumspire_*/
+run_enum.sh
+*.xml
+
+# Ignore Python cache
+__pycache__/
+*.pyc

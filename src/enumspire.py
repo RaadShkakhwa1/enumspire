@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+import argparse
+import os
+import sys
+
+# ---------------------------------------------------------
+# ENGINE IMPORTS - Fully Connected!
+# ---------------------------------------------------------
+from discovery import execute_rustscan
+from deep_scan import execute_nmap
+from cascade import generate_cascade_commands
+
+def print_banner():
+    """Displays the professional tool banner."""
+    print("""
+    ███████╗███╗   ██╗██╗   ██╗███╗   ███╗███████╗██████╗ ██╗██████╗ ███████╗
+    ██╔════╝████╗  ██║██║   ██║████╗ ████║██╔════╝██╔══██╗██║██╔══██╗██╔════╝
+    █████╗  ██╔██╗ ██║██║   ██║██╔████╔██║███████╗██████╔╝██║██████╔╝█████╗  
+    ██╔══╝  ██║╚██╗██║██║   ██║██║╚██╔╝██║╚════██║██╔═══╝ ██║██╔══██╗██╔══╝  
+    ███████╗██║ ╚████║╚██████╔╝██║ ╚═╝ ██║███████║██║     ██║██║  ██║███████╗
+    ╚══════╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝     ╚═╝╚══════╝╚═╝     ╚═╝╚═╝  ╚═╝╚══════╝
+    =========================================================================
+                 Automated Reconnaissance & Enumeration Pipeline
+    =========================================================================
+    """)
+
+def get_arguments():
+    """Captures and formats the command-line flags."""
+    parser = argparse.ArgumentParser(
+        description="EnumSpire: Automated Reconnaissance and Enumeration Pipeline",
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+    
+    # Required Target
+    parser.add_argument("-t", "--target", dest="target", required=True, help="Target IP address, domain, or CIDR range")
+    
+    # Execution Modifiers
+    parser.add_argument("-p", "--ports", dest="ports", help="Specify ports to scan (e.g., 80,443). Skips RustScan phase.")
+    parser.add_argument("-m", "--module", dest="module", help="Run templates for a specific service only (e.g., smb, http)")
+    parser.add_argument("-Pn", "--no-ping", dest="noping", action="store_true", help="Treat the host as online (skip ICMP ping)")
+    
+    # Advanced Options
+    parser.add_argument("-w", "--wordlist", dest="wordlist", default="/usr/share/wordlists/dirb/common.txt", help="Custom wordlist for fuzzing")
+    parser.add_argument("--threads", dest="threads", default="40", help="Number of concurrent threads for brute-forcing tools (default: 40)")
+    parser.add_argument("-x", "--exclude", dest="exclude", help="Comma-separated IPs to exclude from the scan")
+    
+    # Output and Logging
+    parser.add_argument("-o", "--output", dest="output", help="Custom output directory path")
+    parser.add_argument("-r", "--report", dest="report", action="store_true", help="Generate a Markdown executive summary report (Coming Soon)")
+    parser.add_argument("-s", "--stealth", dest="stealth", action="store_true", help="Run scans slower (T2) to evade basic detection")
+    parser.add_argument("-v", "--verbose", dest="verbose", action="store_true", help="Enable detailed console output")
+    
+    return parser.parse_args()
+
+def validate_inputs(args):
+    """Guardrails: Prevents the script from crashing due to user error."""
+    if not os.path.exists(args.wordlist):
+        print(f"[!] FATAL ERROR: The wordlist path '{args.wordlist}' does not exist.")
+        print("[!] Please check your path and try running Enumspire again.")
+        sys.exit(1)
+
+def main():
+    print_banner()
+    
+    # 1. Capture and Validate Flags
+    args = get_arguments()
+    validate_inputs(args)
+    
+    target_ip = args.target
+    
+    # 2. Configure the Output Directory
+    if args.output:
+        workspace_dir = args.output
+    else:
+        workspace_dir = f"Enumspire_{target_ip.replace('.', '_')}"
+        
+    if not os.path.exists(workspace_dir):
+        os.makedirs(workspace_dir)
+        if args.verbose:
+            print(f"[*] Created workspace directory: {workspace_dir}")
+
+    # 3. WIRING: The Single Module Override (-m)
+    if args.module:
+        print(f"[*] Module flag detected. Skipping network scanning.")
+        print(f"[*] Generating execution templates for: {args.module.upper()}")
+        
+        # Passes a fake port {0: module_name} straight to the generator
+        generate_cascade_commands(target_ip, {0: args.module}, workspace_dir, args.wordlist, args.threads)
+        
+        print("[*] Single module execution complete. Check your run_enum.sh file.")
+        sys.exit(0)
+
+    # 4. WIRING: The Specific Ports Override (-p)
+    if args.ports:
+        print(f"[*] Port flag detected. Skipping RustScan.")
+        open_ports = args.ports
+    else:
+        print(f"[*] Initiating Phase 1: RustScan against {target_ip}...")
+        open_ports = execute_rustscan(target_ip)
+
+    # 5. WIRING: The Nmap Modifiers & Execution
+    if open_ports:
+        print(f"[*] Initiating Phase 2: Nmap deep-scan on ports: {open_ports}...")
+        
+        # Build the dynamic Nmap command list
+        nmap_command = ["nmap", "-p", open_ports, "-sV", "-sC"]
+        
+        if args.stealth:
+            print("[+] Stealth mode enabled (-T2)")
+            nmap_command.append("-T2")
+        else:
+            nmap_command.append("-T4")
+            
+        if args.noping:
+            print("[+] No-Ping mode enabled (-Pn)")
+            nmap_command.append("-Pn")
+            
+        if args.exclude:
+            print(f"[+] Excluding IPs: {args.exclude}")
+            nmap_command.extend(["--exclude", args.exclude])
+            
+        nmap_command.append(target_ip)
+        
+        if args.verbose:
+            print(f"[*] Executing Nmap Command: {' '.join(nmap_command)}")
+            
+        # Execute the scan AND capture the returned XML data dictionary
+        parsed_services = execute_nmap(nmap_command, workspace_dir)
+        
+        # 6. WIRING: Pass parsed data and variables to Cascade Generator
+        if parsed_services:
+            print(f"\n[*] Initiating Phase 3: Generating specific enumeration commands...")
+            if args.wordlist != "/usr/share/wordlists/dirb/common.txt":
+                print(f"[+] Injecting custom wordlist: {args.wordlist}")
+                
+            generate_cascade_commands(target_ip, parsed_services, workspace_dir, args.wordlist, args.threads)
+        else:
+            print("[-] Nmap did not return any identifiable services to enumerate.")
+            
+        # 7. WIRING: The Markdown Report Flag (-r)
+        if args.report:
+            print(f"[*] Markdown Executive Summary module is under construction.")
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n[!] Scan interrupted by user (Ctrl+C). Exiting...")
+        sys.exit(0)
