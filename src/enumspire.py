@@ -125,19 +125,28 @@ def main():
                 print(f"[*] Initiating Phase 2: Nmap deep-scan on ports: {open_ports}...")
             
             # Build the base Nmap command list
-            nmap_command = ["nmap", "-p", open_ports, "-sV", "-sC"]
-            
-            # The User Choice Logic: Inject -Pn only if the user typed it
-            if args.no_ping:
-                nmap_command.insert(1, "-Pn")
-                
-            # Handle the -s (Stealth) timing flag
-            if args.stealth:
-                nmap_command.insert(1, "-T2")
-            else:
-                nmap_command.insert(1, "-T4")
-                
-            nmap_command.append(args.target)
+        nmap_command = ["nmap", "-p", open_ports, "-sV", "-sC"]
+
+        # 1. Handle the -s (Stealth) timing flag
+        if args.stealth:
+            print("[+] Stealth mode enabled (-T2)")
+            nmap_command.insert(1, "-T2")
+        else:
+            nmap_command.insert(1, "-T4")
+
+        # 2. The User Choice Logic (-Pn)
+        if args.noping:
+            print("[+] No-Ping mode enabled (-Pn)")
+            nmap_command.insert(1, "-Pn")
+
+        # 3. Handle exclusions if they exist
+        if getattr(args, 'exclude', None):
+            print(f"[+] Excluding IPs: {args.exclude}")
+            nmap_command.insert(1, args.exclude)
+            nmap_command.insert(1, "--exclude")
+
+        # 4. Append target last
+        nmap_command.append(args.target)
             
             # Save the output as XML for parsing
             nmap_xml_path = os.path.join(workspace_dir, "nmap_scan.xml")
