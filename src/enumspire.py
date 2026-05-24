@@ -84,11 +84,27 @@ def main():
         print(f"[*] Module flag detected. Skipping network scanning.")
         print(f"[*] Generating execution templates for: {args.module.upper()}")
         
-        # BUG FIX: Use user-provided ports, or default to port 80 to prevent URL crashes
+        target_service = args.module.lower()
+        
         if args.ports:
-            services_dict = {port: args.module for port in args.ports.split(',')}
+            # If user provides custom ports, use them
+            services_dict = {int(port): target_service for port in args.ports.split(',')}
         else:
-            services_dict = {80: args.module}
+            # Small override dict for common tools, then fallback to Linux native lookup
+            default_ports = {'http': 80, 'https': 443, 'smb': 445} 
+            
+            if target_service in default_ports:
+                mapped_port = default_ports[target_service]
+            else:
+                try:
+                    # Automatically query the Linux /etc/services database
+                    mapped_port = socket.getservbyname(target_service)
+                except OSError:
+                    print(f"[!] Warning: Unknown service '{target_service}'. Defaulting to port 80.")
+                    print(f"[!] Hint: Use -p to manually specify the port.")
+                    mapped_port = 80
+                    
+            services_dict = {mapped_port: target_service}
             
         generate_cascade_commands(target_ip, services_dict, workspace_dir, args.wordlist, args.threads)
         
