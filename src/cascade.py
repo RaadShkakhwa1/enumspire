@@ -1,51 +1,46 @@
 import os
 
-def generate_cascade_commands(target_ip, services_dict, workspace_dir, wordlist="/usr/share/wordlists/dirb/common.txt", threads=40, no_ping=False):
-    """
-    Takes the parsed services and generates a bash script with specific tool commands.
-    """
-    script_path = os.path.join(workspace_dir, "run_enum.sh")
+def generate_cascade_commands(target_ip, services_dict, workspace_dir, wordlist, threads, no_ping, dry_run=False):
+    print(f"\n[*] Initiating Phase 3: Generating cascade commands for {len(services_dict)} services...")
     
-    # Set the dynamic ping flag for the bash script (-Pn with a trailing space if True)
-    pn_flag = "-Pn " if no_ping else ""
+    script_path = os.path.join(workspace_dir, "run_enum.sh")
     
     with open(script_path, "w") as f:
         f.write("#!/bin/bash\n")
         f.write(f"# Auto-generated enumeration script for {target_ip}\n\n")
         
         for port, service in services_dict.items():
-            service_name = service.lower()
+            service_lower = service.lower() if service else "unknown"
+            print(f" [+] Mapping templates for port {port} ({service_lower})")
             
-            if service_name == 'http' or service_name == 'https':
-                # Dynamically choose the correct protocol prefix
-                protocol = "https" if service_name == 'https' else "http"
+            # HTTP / Web
+            if "http" in service_lower or "www" in service_lower:
+                cmd = f"gobuster dir -u http://{target_ip}:{port} -w {wordlist} -t {threads} -o {workspace_dir}/http_{port}_gobuster.txt"
+                f.write(f"# HTTP Enumeration for port {port}\n")
+                f.write(f"{cmd}\n\n")
                 
-                f.write(f"# —— Target: Port {port} ({service_name.upper()}) ——\n")
-                f.write(f"ffuf -w {wordlist} -u {protocol}://{target_ip}:{port}/FUZZ -t {threads}\n")
-                f.write(f"feroxbuster -u {protocol}://{target_ip}:{port} -w {wordlist} -t {threads}\n\n")
+            # SMB / Windows
+            elif "smb" in service_lower or "microsoft-ds" in service_lower or "netbios" in service_lower:
+                cmd = f"enum4linux -a {target_ip} > {workspace_dir}/smb_{port}_enum4linux.txt"
+                f.write(f"# SMB Enumeration for port {port}\n")
+                f.write(f"{cmd}\n\n")
                 
-            elif service_name == 'smb':
-                f.write(f"# —— Target: Port {port} (SMB) ——\n")
-                # Using forward slashes is much safer in bash scripts
-                f.write(f"smbclient -N -L //{target_ip}\n")
-                f.write(f"smbmap -H {target_ip}\n")
-                f.write(f"enum4linux -a {target_ip}\n\n")
-                
-            elif service_name == 'ftp':
-                f.write(f"# —— Target: Port {port} (FTP) ——\n")
-                f.write(f"nmap {pn_flag}-sV -sC -p {port} {target_ip}\n")
-                f.write(f"ftp {target_ip} {port}\n\n")
-                
-            elif service_name == 'ssh':
-                f.write(f"# —— Target: Port {port} (SSH) ——\n")
-                f.write(f"nmap {pn_flag}-p {port} --script ssh-auth-methods,ssh2-enum-algos {target_ip}\n")
-                f.write(f"ssh {target_ip} -p {port}\n\n")
+            # FTP
+            elif "ftp" in service_lower:
+                cmd = f"nmap -p {port} --script ftp-anon {target_ip} -oN {workspace_dir}/ftp_{port}_anon.txt"
+                f.write(f"# FTP Enumeration for port {port}\n")
+                f.write(f"{cmd}\n\n")
                 
             else:
-                # The Professional Fallback: Deep Nmap scan for unknown services
-                f.write(f"# —— Target: Port {port} ({service_name.upper()}) ——\n")
-                f.write(f"nmap {pn_flag}-sV -sC -A -p {port} {target_ip}\n\n")
+                f.write(f"# No specific automated template available for {service_lower} on port {port}\n\n")
                 
-    # Automatically make the generated bash script executable
+    # Make the generated script executable
     os.chmod(script_path, 0o755)
+    
     print(f"[*] CASCADE COMPLETE: Auto-execution script created at {script_path}")
+    
+    if dry_run:
+        print("[!] DRY RUN MODE: Script was generated but will not be executed automatically.")
+    else:
+        print("[*] To execute the targeted enumeration attacks, run:")
+        print(f"    ./{script_path}")
