@@ -103,8 +103,12 @@ def main():
                 
             print("[*] Initiating Phase 3: Handing off to Cascade...")
             
-            # Trigger your secondary script to generate enumeration commands
-            generate_cascade_commands(xml_file, out_dir)
+            # Trigger  secondary script to generate enumeration commands
+            wordlist = "/usr/share/wordlists/dirb/common.txt"
+            threads = 50
+            no_ping = True
+            
+            generate_cascade_commands(xml_file, out_dir, out_dir, wordlist, threads, no_ping)
             print("[+] EnumSpire pipeline complete! Check your output folder for the execution script.")
             
         except FileNotFoundError:
