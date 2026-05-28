@@ -3,125 +3,114 @@ import argparse
 import subprocess
 import os
 import sys
+import shutil
 import xml.etree.ElementTree as ET
-from cascade import generate_cascade_commands
+
+# Import your Cascade engine
+try:
+    from cascade import generate_cascade_commands
+except ImportError:
+    print("[-] Error: cascade.py not found. Make sure it is in the same directory.")
+    sys.exit(1)
 
 def print_banner():
     banner = """
-    ███████╗███╗   ██╗██╗   ██╗███╗   ███╗██████╗ ██╗██████╗ ██████╗ ███████╗
-    ██╔════╝████╗  ██║██║   ██║████╗ ████║██╔══██╗██║██╔══██╗██╔══██╗██╔════╝
-    █████╗  ██╔██╗ ██║██║   ██║██╔████╔██║██████╔╝██║██████╔╝██████╔╝█████╗  
-    ██╔══╝  ██║╚██╗██║██║   ██║██║╚██╔╝██║██╔═══╝ ██║██╔══██╗██╔══██╗██╔══╝  
-    ███████╗██║ ╚████║╚██████╔╝██║ ╚═╝ ██║██║     ██║██║  ██║██║  ██║███████╗
-    ╚══════╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝
+ ███████╗███╗   ██╗██╗   ██╗███╗   ███╗██████╗ ███████╗██████╗ ██╗██████╗ ███████╗
+ ██╔════╝████╗  ██║██║   ██║████╗ ████║██╔══██╗██╔════╝██╔══██╗██║██╔══██╗██╔════╝
+ █████╗  ██╔██╗ ██║██║   ██║██╔████╔██║██████╔╝███████╗██████╔╝██║██████╔╝█████╗  
+ ██╔══╝  ██║╚██╗██║██║   ██║██║╚██╔╝██║██╔═══╝ ╚════██║██╔═══╝ ██║██╔══██╗██╔══╝  
+ ███████╗██║ ╚████║╚██████╔╝██║ ╚═╝ ██║██║     ███████║██║     ██║██║  ██║███████╗
+ ╚══════╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝     ╚═╝╚═╝     ╚══════╝╚═╝     ╚═╝╚═╝  ╚═╝╚══════╝
+                 Automated Reconnaissance & Enumeration Pipeline
     """
     print(banner)
 
 def main():
     print_banner()
-    parser = argparse.ArgumentParser(description="EnumSpire: Automated Reconnaissance Pipeline")
-    
-    # Execution Modifiers
-    parser.add_argument("-t", "--target", required=True, help="Target IP address or domain")
-    parser.add_argument("-p", "--ports", dest="ports", help="Specify ports to scan (e.g., 80,443).")
-    parser.add_argument("-m", "--module", dest="module", help="Run templates for a specific service only")
-    parser.add_argument("-Pn", "--no-ping", dest="noping", action="store_true", help="Treat the host as online")
-    parser.add_argument("-w", "--wordlist", default="/usr/share/wordlists/dirb/common.txt", help="Custom wordlist")
-    parser.add_argument("--threads", type=int, default=40, help="Threads for brute-forcing")
-    parser.add_argument("-x", "--exclude", dest="exclude", help="Comma-separated IPs to exclude")
-    parser.add_argument("-o", "--output", dest="output", help="Custom output directory")
-    parser.add_argument("-s", "--stealth", dest="stealth", action="store_true", help="Run scans slower (T2)")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Enable detailed console output")
-    
-    # Debugging Flag
-    parser.add_argument("--dry-run", action="store_true", help="DEBUG: Print commands without executing them")
 
+    parser = argparse.ArgumentParser(description="EnumSpire - Automated Reconnaissance")
+    parser.add_argument("-t", "--target", required=True, help="Target IP address")
+    parser.add_argument("-p", "--ports", help="Manually specify ports (e.g., 80,443)")
+    parser.add_argument("--dry-run", action="store_true", help="Print commands without executing them")
     args = parser.parse_args()
+
     target_ip = args.target
-    workspace_dir = args.output if args.output else f"Enumspire_{target_ip.replace('.', '_')}"
 
-    if not os.path.exists(workspace_dir):
-        os.makedirs(workspace_dir)
+    # Create output directory based on the target IP
+    out_dir = f"Enumspire_{target_ip.replace('.', '_')}"
+    if not args.dry_run:
+        os.makedirs(out_dir, exist_ok=True)
 
-    # 5. WIRING: The Nmap Modifiers & Execution
+    # ---------------------------------------------------------
+    # PHASE 1: Port Discovery (RustScan with Nmap Fallback)
+    # ---------------------------------------------------------
     if args.ports:
         open_ports = args.ports
     else:
-       print("[*] Initiating Phase 1: RustScan...")
-    # Your original subprocess.run(['rustscan', '-a', target_ip ...]) code goes here
-    # open_ports = <output from rustscan>
+        if shutil.which("rustscan") is None:
+            print("[!] Warning: RustScan is not installed.")
+            print(f"[*] Falling back to standard Nmap for full port sweep against {target_ip} (This will take longer)...")
+            open_ports = "-"  # Tells Phase 2 Nmap to scan all ports
+        else:
+            print(f"[*] Initiating Phase 1: RustScan against {target_ip}...")
+            rustscan_cmd = f"rustscan -a {target_ip} -g"
+            
+            if args.dry_run:
+                print(f"[DRY-RUN] Would execute: {rustscan_cmd}")
+                open_ports = "22,80,443" # Dummy ports for dry-run
+            else:
+                process = subprocess.run(rustscan_cmd, shell=True, capture_output=True, text=True)
+                if "[" in process.stdout and "]" in process.stdout:
+                    open_ports = process.stdout.split("[")[1].split("]")[0]
+                    print(f"[+] RustScan discovered open ports: {open_ports}")
+                else:
+                    print("[-] RustScan did not find any open ports or failed to execute.")
+                    sys.exit(0)
 
-    if args.verbose or args.dry_run:
-        print(f"[*] Initiating Phase 2: Nmap deep-scan on ports: {open_ports}...")
+    # ---------------------------------------------------------
+    # PHASE 2: Service Enumeration (Nmap)
+    # ---------------------------------------------------------
+    print(f"[*] Initiating Phase 2: Nmap deep-scan on ports: {open_ports} ...")
+    xml_file = os.path.join(out_dir, "nmap_scan.xml")
     
-    nmap_command = ["nmap", "-p", open_ports, "-sV", "-sC"]
-
-    # Insert flags at index 1
-    if args.stealth:
-        if args.verbose or args.dry_run: print("[+] Stealth mode enabled (-T2)")
-        nmap_command.insert(1, "-T2")
-    else:
-        nmap_command.insert(1, "-T4")
-
-    if args.noping:
-        if args.verbose or args.dry_run: print("[+] No-Ping mode enabled (-Pn)")
-        nmap_command.insert(1, "-Pn")
-
-    if args.exclude:
-        if args.verbose or args.dry_run: print(f"[+] Excluding IPs: {args.exclude}")
-        nmap_command.insert(1, args.exclude)
-        nmap_command.insert(1, "--exclude")
-
-    # Append target last
-    nmap_command.append(target_ip)
+    # Build the Nmap command dynamically
+    nmap_command = ["nmap", "-sV", "-sC", "-p", open_ports, "-oX", xml_file, target_ip]
     
-    # Save output as XML
-    nmap_xml_path = os.path.join(workspace_dir, "nmap_scan.xml")
-    nmap_command.extend(["-oX", nmap_xml_path])
-    
-    services_dict = {}
-
     if args.dry_run:
-        print("\n[DEBUG] --- DRY RUN MODE TRIGGERED ---")
-        print(f"[DEBUG] Final Nmap Command: {' '.join(nmap_command)}")
-        print("[DEBUG] Bypassing subprocess execution...")
-        print("[DEBUG] Injecting mock HTTP and SMB services for Phase 3 testing...")
-        services_dict = {"80": "http", "445": "microsoft-ds"}
+        print(f"[DRY-RUN] Would execute: {' '.join(nmap_command)}")
     else:
-        if args.verbose:
-            print(f"[*] Executing Command: {' '.join(nmap_command)}")
+        subprocess.run(nmap_command)
+        print(f"[+] Nmap scan complete. Results saved to {xml_file}")
+
+        # ---------------------------------------------------------
+        # PHASE 3: XML Parsing & Cascade Handoff
+        # ---------------------------------------------------------
         try:
-            subprocess.run(nmap_command, check=True)
-        except subprocess.CalledProcessError:
-            print("[!] Error: Nmap scan failed.")
-            sys.exit(1)
+            tree = ET.parse(xml_file)
+            root = tree.getroot()
             
-        # XML Parsing
-        if os.path.exists(nmap_xml_path):
-            try:
-                tree = ET.parse(nmap_xml_path)
-                for port in tree.findall('.//port'):
-                    if port.find('state').get('state') == 'open':
-                        service = port.find('service')
-                        if service is not None:
-                            services_dict[port.get('portid')] = service.get('name')
-            except ET.ParseError:
-                print("[!] Error parsing Nmap XML output.")
+            # Check if there are any actually open ports
+            ports_found = False
+            for port in root.findall(".//port"):
+                state = port.find("state")
+                if state is not None and state.get("state") == "open":
+                    ports_found = True
+                    break
+            
+            if not ports_found:
+                print("[-] Nmap did not return any identifiable services to enumerate.")
+                sys.exit(0)
                 
-    if not services_dict:
-        print("[-] Nmap did not return any identifiable services to enumerate.")
-        sys.exit(0)
+            print("[*] Initiating Phase 3: Handing off to Cascade...")
             
-    # Trigger Cascade
-    generate_cascade_commands(
-        target_ip=target_ip, 
-        services_dict=services_dict, 
-        workspace_dir=workspace_dir, 
-        wordlist=args.wordlist, 
-        threads=args.threads,
-        no_ping=args.noping,
-        dry_run=args.dry_run
-    )
+            # Trigger your secondary script to generate enumeration commands
+            generate_cascade_commands(xml_file, out_dir)
+            print("[+] EnumSpire pipeline complete! Check your output folder for the execution script.")
+            
+        except FileNotFoundError:
+            print("[-] Error: Nmap XML file not found. Scan may have failed.")
+        except Exception as e:
+            print(f"[-] Error parsing Nmap results: {e}")
 
 if __name__ == "__main__":
     main()
