@@ -1,10 +1,14 @@
 #!/bin/bash
-echo "[*] Installing EnumSpire..."
 
-# Ensure the script is executable
-chmod +x src/enumspire.py
+echo "[*] Installing EnumSpire System-Wide..."
 
-# Create the global system link
-sudo ln -sf $(pwd)/src/enumspire.py /usr/local/bin/enumspire
+# Magically find the exact folder where the user downloaded the tool
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
-echo "[+] Install Complete! You can now type 'enumspire' from any folder."
+# Force executable permissions on the Python script
+chmod +x "$SCRIPT_DIR/src/enumspire.py"
+
+# Create the global system link pointing to that exact folder
+sudo ln -sf "$SCRIPT_DIR/src/enumspire.py" /usr/local/bin/enumspire
+
+echo "[+] Install Complete! You can now run 'enumspire' from anywhere."
