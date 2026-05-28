@@ -44,7 +44,12 @@ def main():
         os.makedirs(workspace_dir)
 
     # 5. WIRING: The Nmap Modifiers & Execution
-    open_ports = args.ports if args.ports else "80,443" 
+    if args.ports:
+    open_ports = args.ports
+else:
+    print("[*] Initiating Phase 1: RustScan...")
+    # Your original subprocess.run(['rustscan', '-a', target_ip ...]) code goes here
+    # open_ports = <output from rustscan>
 
     if args.verbose or args.dry_run:
         print(f"[*] Initiating Phase 2: Nmap deep-scan on ports: {open_ports}...")
