@@ -4,7 +4,81 @@ import subprocess
 import os
 import sys
 import shutil
-import xml.etree.ElementTree as ET
+# ---------------------------------------------------------
+        # PHASE 3: XML Parsing & Cascade Handoff
+        # ---------------------------------------------------------
+        try:
+            tree = ET.parse(xml_file)
+            root = tree.getroot()
+            
+            # 1. Build a dictionary of {port: service_name} for Cascade
+            parsed_services = {}
+            for port in root.findall(".//port"):
+                state = port.find("state")
+                if state is not None and state.get("state") == "open":
+                    port_num = port.get("portid")
+                    service_elem = port.find("service")
+                    service_name = service_elem.get("name") if service_elem is not None else "unknown"
+                    parsed_services[port_num] = service_name
+            
+            # 2. Check if we actually found anything
+            if not parsed_services:
+                print("[-] Nmap did not return any identifiable services to enumerate.")
+                sys.exit(0)
+                
+            print(f"[*] Initiating Phase 3: Handing off {len(parsed_services)} services to Cascade...")
+            
+            # 3. Setup Cascade variables
+            wordlist = "/usr/share/wordlists/dirb/common.txt"
+            threads = 50
+            no_ping = True
+            
+            # 4. The Correct Handoff: target_ip, dictionary, workspace_dir, wordlist, threads, no_ping
+            generate_cascade_commands(target_ip, parsed_services, out_dir, wordlist, threads, no_ping)
+            
+            print("[+] EnumSpire pipeline complete! Check your output folder for the execution script.")
+            
+        except FileNotFoundError:
+            print("[-] Error: Nmap XML file not found. Scan may have failed.")
+        except Exception as e:
+            print(f"[-] Error parsing Nmap results: {e}")# ---------------------------------------------------------
+        # PHASE 3: XML Parsing & Cascade Handoff
+        # ---------------------------------------------------------
+        try:
+            tree = ET.parse(xml_file)
+            root = tree.getroot()
+            
+            # 1. Build a dictionary of {port: service_name} for Cascade
+            parsed_services = {}
+            for port in root.findall(".//port"):
+                state = port.find("state")
+                if state is not None and state.get("state") == "open":
+                    port_num = port.get("portid")
+                    service_elem = port.find("service")
+                    service_name = service_elem.get("name") if service_elem is not None else "unknown"
+                    parsed_services[port_num] = service_name
+            
+            # 2. Check if we actually found anything
+            if not parsed_services:
+                print("[-] Nmap did not return any identifiable services to enumerate.")
+                sys.exit(0)
+                
+            print(f"[*] Initiating Phase 3: Handing off {len(parsed_services)} services to Cascade...")
+            
+            # 3. Setup Cascade variables
+            wordlist = "/usr/share/wordlists/dirb/common.txt"
+            threads = 50
+            no_ping = True
+            
+            # 4. The Correct Handoff: target_ip, dictionary, workspace_dir, wordlist, threads, no_ping
+            generate_cascade_commands(target_ip, parsed_services, out_dir, wordlist, threads, no_ping)
+            
+            print("[+] EnumSpire pipeline complete! Check your output folder for the execution script.")
+            
+        except FileNotFoundError:
+            print("[-] Error: Nmap XML file not found. Scan may have failed.")
+        except Exception as e:
+            print(f"[-] Error parsing Nmap results: {e}")import xml.etree.ElementTree as ET
 
 # Import your Cascade engine
 try:
@@ -82,39 +156,45 @@ def main():
         subprocess.run(nmap_command)
         print(f"[+] Nmap scan complete. Results saved to {xml_file}")
 
-        # ---------------------------------------------------------
+# ---------------------------------------------------------
         # PHASE 3: XML Parsing & Cascade Handoff
         # ---------------------------------------------------------
         try:
             tree = ET.parse(xml_file)
             root = tree.getroot()
             
-            # Check if there are any actually open ports
-            ports_found = False
+            # 1. Build a dictionary of {port: service_name} for Cascade
+            parsed_services = {}
             for port in root.findall(".//port"):
                 state = port.find("state")
                 if state is not None and state.get("state") == "open":
-                    ports_found = True
-                    break
+                    port_num = port.get("portid")
+                    service_elem = port.find("service")
+                    service_name = service_elem.get("name") if service_elem is not None else "unknown"
+                    parsed_services[port_num] = service_name
             
-            if not ports_found:
+            # 2. Check if we actually found anything
+            if not parsed_services:
                 print("[-] Nmap did not return any identifiable services to enumerate.")
                 sys.exit(0)
                 
-            print("[*] Initiating Phase 3: Handing off to Cascade...")
+            print(f"[*] Initiating Phase 3: Handing off {len(parsed_services)} services to Cascade...")
             
-            # Trigger  secondary script to generate enumeration commands
+            # 3. Setup Cascade variables
             wordlist = "/usr/share/wordlists/dirb/common.txt"
             threads = 50
             no_ping = True
             
-            generate_cascade_commands(xml_file, out_dir, out_dir, wordlist, threads, no_ping)
+            # 4. The Correct Handoff: target_ip, dictionary, workspace_dir, wordlist, threads, no_ping
+            generate_cascade_commands(target_ip, parsed_services, out_dir, wordlist, threads, no_ping)
+            
             print("[+] EnumSpire pipeline complete! Check your output folder for the execution script.")
             
         except FileNotFoundError:
             print("[-] Error: Nmap XML file not found. Scan may have failed.")
         except Exception as e:
             print(f"[-] Error parsing Nmap results: {e}")
+
 
 if __name__ == "__main__":
     main()
