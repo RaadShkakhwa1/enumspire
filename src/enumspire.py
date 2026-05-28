@@ -45,7 +45,7 @@ def main():
 
     # 5. WIRING: The Nmap Modifiers & Execution
     if args.ports:
-    open_ports = args.ports
+        open_ports = args.ports
 else:
     print("[*] Initiating Phase 1: RustScan...")
     # Your original subprocess.run(['rustscan', '-a', target_ip ...]) code goes here
